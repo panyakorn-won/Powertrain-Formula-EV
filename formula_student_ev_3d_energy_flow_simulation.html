@@ -1,0 +1,1371 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Formula EV 3D Energy & Real-Time Telemetry Simulator</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        slate: {
+                            950: '#060911',
+                            900: '#0b111e',
+                            850: '#101828',
+                            800: '#1b2537'
+                        },
+                        motec: {
+                            red: '#ef4444',
+                            orange: '#f97316',
+                            cyan: '#06b6d4',
+                            green: '#10b981',
+                            yellow: '#eab308'
+                        }
+                    },
+                    fontFamily: {
+                        mono: ['"JetBrains Mono"', 'monospace'],
+                        sans: ['Kanit', 'system-ui', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- FontAwesome Icons & Google Fonts -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;800&family=Kanit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Three.js Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Kanit', sans-serif;
+            background-color: #060911;
+            color: #e2e8f0;
+            user-select: none;
+            overflow: hidden;
+        }
+
+        .font-mono-num {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Engineering Motorsport Telemetry Panels */
+        .telemetry-panel {
+            background: rgba(11, 17, 30, 0.92);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+        }
+
+        .telemetry-card {
+            background: rgba(16, 24, 40, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        /* Glowing & LED Status Indicators */
+        .status-led {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .led-green { background: #10b981; box-shadow: 0 0 8px #10b981; }
+        .led-orange { background: #f97316; box-shadow: 0 0 8px #f97316; }
+        .led-cyan { background: #06b6d4; box-shadow: 0 0 8px #06b6d4; }
+        .led-red { background: #ef4444; box-shadow: 0 0 12px #ef4444; animation: blink 0.6s infinite alternate; }
+
+        @keyframes blink {
+            from { opacity: 0.3; }
+            to { opacity: 1; }
+        }
+
+        /* 3D Label Overlay */
+        .hud-label-3d {
+            position: absolute;
+            transform: translate(-50%, -100%);
+            pointer-events: none;
+            transition: opacity 0.15s ease, transform 0.05s ease;
+            white-space: nowrap;
+        }
+
+        /* Custom Range Inputs */
+        input[type=range] {
+            -webkit-appearance: none;
+            background: #1b2537;
+            border-radius: 6px;
+            height: 6px;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #06b6d4;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(6, 182, 212, 0.8);
+            border: 2px solid #ffffff;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: rgba(6, 9, 17, 0.6);
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #1b2537;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body class="w-screen h-screen relative bg-slate-950 text-slate-100 overflow-hidden">
+
+    <!-- 3D Canvas Container -->
+    <div id="canvas-container" class="w-full h-full absolute inset-0 z-0"></div>
+
+    <!-- 3D HUD Labels Overlay Layer -->
+    <div id="hud-labels-layer" class="absolute inset-0 pointer-events-none z-10 overflow-hidden"></div>
+
+    <!-- TOP TELEMETRY NAVBAR -->
+    <header class="absolute top-3 left-3 right-3 z-20 flex flex-col md:flex-row justify-between items-start md:items-center gap-3 pointer-events-none">
+        <!-- Logo & System Status -->
+        <div class="telemetry-panel px-4 py-2.5 rounded-xl pointer-events-auto flex items-center gap-4 border-l-4 border-l-cyan-500">
+            <div class="w-10 h-10 rounded-lg bg-slate-900 border border-slate-700 flex items-center justify-center text-cyan-400 text-lg font-bold">
+                <i class="fa-solid fa-microchip"></i>
+            </div>
+            <div>
+                <div class="flex items-center gap-2">
+                    <span class="text-sm font-bold font-mono-num tracking-wider text-slate-100">FSAE-EV TELEMETRY v4.2</span>
+                    <span class="text-[10px] font-mono-num px-2 py-0.5 rounded bg-slate-800 text-cyan-400 border border-slate-700">CAN-BUS 500kbps</span>
+                </div>
+                <div class="text-xs text-slate-400 flex items-center gap-3 mt-0.5">
+                    <span class="flex items-center gap-1.5"><span id="led-can" class="status-led led-green"></span> SYSTEM: ONLINE</span>
+                    <span class="text-slate-700">•</span>
+                    <span class="flex items-center gap-1.5"><span id="led-hv" class="status-led led-green"></span> HV ACCUMULATOR: 400V</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Camera Preset Selector -->
+        <div class="telemetry-panel px-3 py-2 rounded-xl pointer-events-auto flex items-center gap-1 text-xs">
+            <span class="text-slate-400 font-mono-num px-2 text-[11px] uppercase"><i class="fa-solid fa-video text-cyan-400 mr-1"></i> CAMERA:</span>
+            <button onclick="setCameraView('iso')" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 font-mono text-[11px] border border-slate-700">ISO 3D</button>
+            <button onclick="setCameraView('side')" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 font-mono text-[11px] border border-slate-700">SIDE</button>
+            <button onclick="setCameraView('powertrain')" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 font-mono text-[11px] border border-slate-700">EV SYSTEM</button>
+            <button onclick="setCameraView('cockpit')" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 font-mono text-[11px] border border-slate-700">COCKPIT</button>
+        </div>
+    </header>
+
+    <!-- FIRE / OVERHEAT HAZARD BANNER -->
+    <div id="fire-banner" class="hidden absolute top-20 left-1/2 -translate-x-1/2 z-30 pointer-events-auto">
+        <div class="telemetry-panel px-5 py-3 rounded-xl flex items-center gap-4 bg-red-950/90 text-red-200 border border-red-500 shadow-2xl">
+            <i class="fa-solid fa-triangle-exclamation text-2xl text-red-500 animate-bounce"></i>
+            <div>
+                <h4 class="font-bold text-xs font-mono text-red-400 tracking-wider">CRITICAL HAZARD: THERMAL RUNAWAY DETECTED</h4>
+                <p id="fire-banner-msg" class="text-xs text-red-200">Battery temperature exceeded 68°C safety limit.</p>
+            </div>
+            <button onclick="resetThermalHazard()" class="ml-2 px-3 py-1.5 rounded bg-red-600 hover:bg-red-500 text-white font-bold text-xs font-mono transition">
+                SHUTDOWN & RESET BMS
+            </button>
+        </div>
+    </div>
+
+    <!-- LEFT SIDEBAR: TELEMETRY & RANGE ENGINE -->
+    <div class="absolute left-3 top-20 bottom-24 z-20 w-80 space-y-3 pointer-events-none hidden md:flex flex-col custom-scrollbar overflow-y-auto pr-1">
+        
+        <!-- Battery Thermal & Safety System Card -->
+        <div id="panel-thermal" class="telemetry-panel p-3.5 rounded-xl pointer-events-auto space-y-2.5 border-t-2 border-t-emerald-500">
+            <div class="flex justify-between items-center">
+                <span class="text-xs font-bold font-mono tracking-wider text-slate-300 flex items-center gap-1.5">
+                    <i class="fa-solid fa-temperature-full text-amber-400"></i> THERMAL SAFETY
+                </span>
+                <span id="badge-thermal" class="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800">NORMAL</span>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2 font-mono text-center">
+                <div class="telemetry-card p-2 rounded-lg">
+                    <span class="text-[10px] text-slate-400 block">BATTERY TEMP</span>
+                    <span id="val-temp" class="text-lg font-extrabold text-emerald-400">32.0 °C</span>
+                </div>
+                <div class="telemetry-card p-2 rounded-lg">
+                    <span class="text-[10px] text-slate-400 block">CURRENT DRAW</span>
+                    <span id="val-current" class="text-lg font-extrabold text-cyan-400">0.0 A</span>
+                </div>
+            </div>
+
+            <!-- Heat Dissipation Bar -->
+            <div class="space-y-1">
+                <div class="flex justify-between text-[11px] font-mono text-slate-400">
+                    <span>JOULE HEAT ($P=I^2R$)</span>
+                    <span id="val-heat" class="text-amber-400 font-bold">120 W</span>
+                </div>
+                <div class="w-full bg-slate-900 h-2 rounded overflow-hidden border border-slate-800">
+                    <div id="bar-heat" class="h-full bg-gradient-to-r from-emerald-500 via-amber-400 to-red-500 transition-all duration-300" style="width: 15%;"></div>
+                </div>
+            </div>
+
+            <p id="txt-thermal-msg" class="text-[11px] text-slate-400 bg-slate-900/90 p-2 rounded border border-slate-800 leading-relaxed">
+                Operating temperature within safe range (&lt; 55°C). Lithium degradation rate optimal.
+            </p>
+        </div>
+
+        <!-- Real-Time Range & Power Telemetry Card -->
+        <div class="telemetry-panel p-3.5 rounded-xl pointer-events-auto space-y-2.5 border-t-2 border-t-cyan-500">
+            <div class="flex justify-between items-center">
+                <span class="text-xs font-bold font-mono tracking-wider text-slate-300 flex items-center gap-1.5">
+                    <i class="fa-solid fa-calculator text-cyan-400"></i> RANGE & POWER ESTIMATOR
+                </span>
+                <span id="badge-flow-mode" class="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-300">STANDBY</span>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2 font-mono text-center">
+                <div class="telemetry-card p-2 rounded-lg">
+                    <span class="text-[10px] text-slate-400 block">TIME TO EMPTY ($T_{rem}$)</span>
+                    <span id="val-trem" class="text-base font-extrabold text-cyan-300">-- mins</span>
+                </div>
+                <div class="telemetry-card p-2 rounded-lg">
+                    <span class="text-[10px] text-slate-400 block">RANGE ($D_{rem}$)</span>
+                    <span id="val-drem" class="text-base font-extrabold text-emerald-300">-- km</span>
+                </div>
+            </div>
+
+            <div class="telemetry-card p-2 rounded-lg text-[11px] font-mono space-y-1 text-slate-400">
+                <div class="flex justify-between">
+                    <span>USABLE ENERGY ($E_{rem}$):</span>
+                    <span id="val-erem" class="text-amber-400 font-bold">4.80 kWh</span>
+                </div>
+                <div class="flex justify-between">
+                    <span>NET POWER ($P_{net}$):</span>
+                    <span id="val-pnet" class="text-cyan-400 font-bold">+0.50 kW</span>
+                </div>
+                <div class="flex justify-between">
+                    <span>REGEN RECOVERY BOOST:</span>
+                    <span id="val-regen-boost" class="text-emerald-400 font-bold">+21%</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Real-Time Telemetry Line Chart -->
+        <div class="telemetry-panel p-3 rounded-xl pointer-events-auto space-y-2 border-t-2 border-t-purple-500">
+            <div class="flex justify-between items-center text-xs font-mono">
+                <span class="font-bold text-slate-300"><i class="fa-solid fa-chart-line text-purple-400 mr-1"></i> LIVE TELEMETRY LOG</span>
+                <div class="flex gap-2 text-[10px]">
+                    <span class="text-orange-400">● POWER (kW)</span>
+                    <span class="text-cyan-400">● SPEED (km/h)</span>
+                </div>
+            </div>
+            <canvas id="chart-telemetry" width="280" height="90" class="w-full bg-slate-900 rounded border border-slate-800"></canvas>
+        </div>
+    </div>
+
+    <!-- RIGHT SIDEBAR: ENGINEERING TUNING & CONTROLS -->
+    <div class="absolute right-3 top-20 bottom-24 z-20 w-80 space-y-3 pointer-events-none hidden lg:flex flex-col custom-scrollbar overflow-y-auto pl-1">
+        
+        <!-- Engineering Parameters Tuning Panel -->
+        <div class="telemetry-panel p-3.5 rounded-xl pointer-events-auto space-y-3 border-t-2 border-t-amber-500">
+            <div class="flex justify-between items-center">
+                <span class="text-xs font-bold font-mono tracking-wider text-slate-200 flex items-center gap-1.5">
+                    <i class="fa-solid fa-sliders text-amber-400"></i> POWERTRAIN TUNING
+                </span>
+                <span class="text-[10px] font-mono text-slate-400">FS-SPEC</span>
+            </div>
+
+            <!-- Brake Blending Slider -->
+            <div class="space-y-1">
+                <div class="flex justify-between text-xs font-mono">
+                    <span class="text-cyan-300">BRAKE BLENDING (REGEN EFF):</span>
+                    <span id="lbl-blending" class="text-cyan-400 font-bold">60%</span>
+                </div>
+                <input type="range" id="input-blending" min="0" max="100" step="5" value="60" oninput="onEngineeringParamsChange()" class="w-full accent-cyan-500">
+            </div>
+
+            <!-- Final Drive Ratio Slider -->
+            <div class="space-y-1">
+                <div class="flex justify-between text-xs font-mono">
+                    <span class="text-slate-300">FINAL DRIVE RATIO:</span>
+                    <span id="lbl-gear" class="text-amber-400 font-bold">4.5:1</span>
+                </div>
+                <input type="range" id="input-gear" min="3.0" max="6.5" step="0.1" value="4.5" oninput="onEngineeringParamsChange()" class="w-full accent-amber-500">
+            </div>
+
+            <!-- Power Cap Slider -->
+            <div class="space-y-1">
+                <div class="flex justify-between text-xs font-mono">
+                    <span class="text-slate-300">POWER LIMIT CAP:</span>
+                    <span id="lbl-power-cap" class="text-sky-400 font-bold">80 kW</span>
+                </div>
+                <input type="range" id="input-power-cap" min="40" max="80" step="5" value="80" oninput="onEngineeringParamsChange()" class="w-full accent-sky-500">
+            </div>
+
+            <!-- Cooling System Slider -->
+            <div class="space-y-1">
+                <div class="flex justify-between text-xs font-mono">
+                    <span class="text-slate-300">COOLING SYSTEM EFF:</span>
+                    <span id="lbl-cooling" class="text-emerald-400 font-bold">75%</span>
+                </div>
+                <input type="range" id="input-cooling" min="0" max="100" step="5" value="75" oninput="onEngineeringParamsChange()" class="w-full accent-emerald-500">
+            </div>
+        </div>
+
+        <!-- Calculated Estimates Card -->
+        <div class="telemetry-panel p-3.5 rounded-xl pointer-events-auto space-y-2 border-t-2 border-t-indigo-500">
+            <span class="text-xs font-bold font-mono tracking-wider text-slate-300 flex items-center gap-1.5">
+                <i class="fa-solid fa-bolt-lightning text-indigo-400"></i> PERFORMANCE PREDICT
+            </span>
+            <div class="grid grid-cols-2 gap-2 text-center font-mono">
+                <div class="telemetry-card p-2 rounded-lg">
+                    <span class="text-[10px] text-slate-400 block">75m ACCEL EST.</span>
+                    <span id="val-est-75m" class="text-sm font-extrabold text-amber-300">3.85 s</span>
+                </div>
+                <div class="telemetry-card p-2 rounded-lg">
+                    <span class="text-[10px] text-slate-400 block">TOP SPEED EST.</span>
+                    <span id="val-est-top" class="text-sm font-extrabold text-cyan-300">128 km/h</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3D Layer Toggles -->
+        <div class="telemetry-panel p-3.5 rounded-xl pointer-events-auto space-y-2">
+            <span class="text-xs font-bold font-mono tracking-wider text-slate-400 block mb-1">VISUAL DISPLAY TOGGLES</span>
+
+            <label class="flex items-center justify-between p-2 rounded bg-slate-900 border border-slate-800 cursor-pointer">
+                <span class="text-xs text-amber-300 font-mono"><i class="fa-solid fa-arrow-trend-up text-orange-400 mr-1.5"></i> 3D ENERGY ARROWS</span>
+                <input type="checkbox" id="chk-arrows" checked onchange="toggleLayer('arrows', this.checked)" class="w-4 h-4 accent-orange-500">
+            </label>
+
+            <label class="flex items-center justify-between p-2 rounded bg-slate-900 border border-slate-800 cursor-pointer">
+                <span class="text-xs text-cyan-300 font-mono"><i class="fa-solid fa-x-ray text-cyan-400 mr-1.5"></i> X-RAY BODY CHASSIS</span>
+                <input type="checkbox" id="chk-xray" checked onchange="toggleLayer('xray', this.checked)" class="w-4 h-4 accent-cyan-500">
+            </label>
+
+            <label class="flex items-center justify-between p-2 rounded bg-slate-900 border border-slate-800 cursor-pointer">
+                <span class="text-xs text-emerald-300 font-mono"><i class="fa-solid fa-tag text-emerald-400 mr-1.5"></i> COMPONENT LABELS</span>
+                <input type="checkbox" id="chk-labels" checked onchange="toggleLayer('labels', this.checked)" class="w-4 h-4 accent-emerald-500">
+            </label>
+        </div>
+    </div>
+
+    <!-- BOTTOM GAUGES & REAL-TIME DRIVING CONTROLS -->
+    <div class="absolute bottom-3 left-3 right-3 z-20 flex flex-col items-center gap-2.5 pointer-events-none">
+        
+        <!-- Live Gauges Bar -->
+        <div class="telemetry-panel px-6 py-2 rounded-xl pointer-events-auto flex items-center justify-center gap-8 border-b-2 border-b-cyan-500 shadow-2xl">
+            <!-- Speed Gauge -->
+            <div class="text-center font-mono">
+                <span class="text-[10px] text-slate-400 font-bold block">SPEED</span>
+                <div class="flex items-baseline justify-center gap-1">
+                    <span id="val-speed" class="text-2xl font-black text-white">0</span>
+                    <span class="text-xs text-slate-400">km/h</span>
+                </div>
+            </div>
+
+            <div class="h-8 w-px bg-slate-800"></div>
+
+            <!-- Net Power Gauge -->
+            <div class="text-center font-mono min-w-[90px]">
+                <span class="text-[10px] text-slate-400 font-bold block">NET POWER</span>
+                <div class="flex items-baseline justify-center gap-1">
+                    <span id="val-power" class="text-2xl font-black text-slate-300">0.0</span>
+                    <span class="text-xs text-slate-400">kW</span>
+                </div>
+            </div>
+
+            <div class="h-8 w-px bg-slate-800"></div>
+
+            <!-- Motor RPM Gauge -->
+            <div class="text-center font-mono">
+                <span class="text-[10px] text-slate-400 font-bold block">MOTOR RPM</span>
+                <div class="flex items-baseline justify-center gap-1">
+                    <span id="val-rpm" class="text-2xl font-black text-emerald-400">0</span>
+                    <span class="text-xs text-slate-400">RPM</span>
+                </div>
+            </div>
+
+            <div class="h-8 w-px bg-slate-800"></div>
+
+            <!-- Battery SOC Gauge -->
+            <div class="text-center font-mono min-w-[120px]">
+                <div class="flex justify-between items-center text-[10px] text-slate-400 mb-1">
+                    <span>SOC</span>
+                    <span id="val-soc-text" class="font-bold text-amber-400">85.0%</span>
+                </div>
+                <div class="w-full bg-slate-900 h-2 rounded overflow-hidden border border-slate-800">
+                    <div id="val-soc-bar" class="h-full bg-gradient-to-r from-red-500 via-amber-400 to-emerald-400 rounded transition-all duration-300" style="width: 85%;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Driving Controls Panel -->
+        <div class="telemetry-panel p-3 rounded-xl pointer-events-auto flex flex-col sm:flex-row items-center gap-3 w-full max-w-3xl">
+            <!-- Mode Selector Buttons -->
+            <div class="grid grid-cols-3 gap-1.5 w-full sm:w-auto font-mono text-xs">
+                <button id="btn-drive" onclick="setSimMode('drive')" class="px-3 py-2 rounded bg-slate-900 hover:bg-orange-600/30 border border-slate-700 text-slate-200 transition text-center">
+                    <i class="fa-solid fa-bolt text-orange-400 block mb-0.5"></i> DRIVE
+                </button>
+                <button id="btn-regen" onclick="setSimMode('regen')" class="px-3 py-2 rounded bg-slate-900 hover:bg-cyan-600/30 border border-slate-700 text-slate-200 transition text-center">
+                    <i class="fa-solid fa-rotate-left text-cyan-400 block mb-0.5"></i> REGEN
+                </button>
+                <button id="btn-idle" onclick="setSimMode('idle')" class="px-3 py-2 rounded bg-slate-900 hover:bg-slate-800 border border-emerald-500/50 text-slate-200 transition text-center">
+                    <i class="fa-solid fa-pause text-emerald-400 block mb-0.5"></i> IDLE
+                </button>
+            </div>
+
+            <!-- Sliders -->
+            <div class="flex-1 w-full grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-900 p-2 rounded border border-slate-800">
+                <div class="space-y-1">
+                    <div class="flex justify-between text-xs font-mono">
+                        <span class="text-orange-400 font-bold"><i class="fa-solid fa-gauge mr-1"></i> THROTTLE:</span>
+                        <span id="lbl-throttle" class="text-orange-400 font-bold">0%</span>
+                    </div>
+                    <input type="range" id="input-throttle" min="0" max="100" value="0" oninput="onThrottleInput(this.value)" class="w-full accent-orange-500">
+                </div>
+
+                <div class="space-y-1">
+                    <div class="flex justify-between text-xs font-mono">
+                        <span class="text-cyan-400 font-bold"><i class="fa-solid fa-hand mr-1"></i> REGEN BRAKE:</span>
+                        <span id="lbl-brake" class="text-cyan-400 font-bold">0%</span>
+                    </div>
+                    <input type="range" id="input-brake" min="0" max="100" value="0" oninput="onBrakeInput(this.value)" class="w-full accent-cyan-500">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN JAVASCRIPT ENGINE -->
+    <script>
+        // Global Simulation State
+        const state = {
+            mode: 'idle', // 'drive', 'regen', 'idle'
+            throttle: 0,
+            regenBrake: 0,
+            speed: 0,
+            rpm: 0,
+            power: 0,           // Net Instantaneous Power (kW)
+            powerDrive: 0,      // Drive Power (kW)
+            powerRegen: 0,      // Regen Power (kW)
+            powerAux: 0.5,      // System Auxiliary Power (kW)
+            batterySOC: 85.0,   // %
+            batteryCapacity: 6.0, // Total Pack Capacity (kWh)
+            soh: 0.98,          // State of Health
+            usableEnergy: 4.8,  // Usable Energy (kWh)
+            pNetAvg: 0.5,       // Moving Average Net Power (kW)
+            timeToEmptyMins: 0,
+            distToEmptyKm: 0,
+            batteryTemp: 28.0,  // °C
+            heatWatts: 0,
+            currentAmp: 0,
+            isFireDanger: false,
+            xray: true,
+            showLabels: true,
+            showArrows: true,
+            // Engineering Parameters
+            brakeBlending: 60,
+            gearRatio: 4.5,
+            powerCap: 80,
+            coolingEff: 75,
+            vehicleWeight: 230
+        };
+
+        // Three.js Core Globals
+        let scene, camera, renderer;
+        let carGroup, bodyMesh;
+        let wheels = [], brakeDiscs = [];
+        let batteryMesh, inverterMesh, motorMesh;
+        let roadGrid, arrowGroup;
+        let smokeParticles, smokeGeo, smokeMat;
+
+        // Paths & Arrows
+        let pathBattToInv, pathInvToMot, pathMotToWheelL, pathMotToWheelR;
+        let driveArrows = [], regenArrows = [];
+        let hudLabels = [];
+
+        // Telemetry Chart Canvas Context
+        let chartCanvas, chartCtx;
+        const chartData = { speed: [], power: [] };
+
+        // Built-in Bulletproof Orbit Camera Logic (Zero External Script Failures)
+        const camControl = {
+            isDragging: false,
+            previousMousePosition: { x: 0, y: 0 },
+            spherical: { radius: 5.5, phi: Math.PI / 3.8, theta: Math.PI / 4 },
+            target: new THREE.Vector3(0, 0.35, 0)
+        };
+
+        window.onload = function() {
+            initScene();
+            buildEnvironment();
+            buildFormulaCar();
+            setupSmokeParticles();
+            setupEnergyPaths();
+            build3DFlowArrows();
+            setupHUDLabels();
+            initTelemetryChart();
+            onEngineeringParamsChange();
+            setupControls();
+            
+            // Start Animation Loop
+            requestAnimationFrame(animate);
+        };
+
+        // 1. Scene & Camera Initialization
+        function initScene() {
+            const container = document.getElementById('canvas-container');
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x060911);
+            scene.fog = new THREE.FogExp2(0x060911, 0.035);
+
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+            updateCameraPosition();
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            // Lighting Setup
+            const ambient = new THREE.AmbientLight(0xffffff, 0.9);
+            scene.add(ambient);
+
+            const sun = new THREE.DirectionalLight(0xffffff, 1.4);
+            sun.position.set(6, 14, 8);
+            sun.castShadow = true;
+            sun.shadow.mapSize.width = 2048;
+            sun.shadow.mapSize.height = 2048;
+            scene.add(sun);
+
+            const cyanBack = new THREE.DirectionalLight(0x06b6d4, 0.7);
+            cyanBack.position.set(-6, 4, -6);
+            scene.add(cyanBack);
+        }
+
+        function updateCameraPosition() {
+            const s = camControl.spherical;
+            camera.position.x = camControl.target.x + s.radius * Math.sin(s.phi) * Math.sin(s.theta);
+            camera.position.y = camControl.target.y + s.radius * Math.cos(s.phi);
+            camera.position.z = camControl.target.z + s.radius * Math.sin(s.phi) * Math.cos(s.theta);
+            camera.lookAt(camControl.target);
+        }
+
+        // 2. Build Road & Ground Environment
+        function buildEnvironment() {
+            roadGrid = new THREE.GridHelper(80, 80, 0x06b6d4, 0x1b2537);
+            roadGrid.position.y = -0.01;
+            scene.add(roadGrid);
+
+            const floor = new THREE.Mesh(
+                new THREE.PlaneGeometry(100, 100),
+                new THREE.MeshStandardMaterial({ color: 0x060911, roughness: 0.7, metalness: 0.3 })
+            );
+            floor.rotation.x = -Math.PI / 2;
+            floor.position.y = -0.015;
+            floor.receiveShadow = true;
+            scene.add(floor);
+        }
+
+        // 3. Build Detailed Student Formula EV Car Model (Front facing +Z)
+        function buildFormulaCar() {
+            carGroup = new THREE.Group();
+            scene.add(carGroup);
+
+            // A. Spaceframe Chassis Tubes
+            const chassisGroup = new THREE.Group();
+            const tubeMat = new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.8, roughness: 0.3 });
+            const tubeNodes = [
+                [0, 0.2, 1.35], [0.3, 0.25, 0.65], [-0.3, 0.25, 0.65],
+                [0.3, 0.55, -0.15], [-0.3, 0.55, -0.15],
+                [0.28, 0.25, -1.05], [-0.28, 0.25, -1.05]
+            ];
+
+            for(let i = 0; i < tubeNodes.length - 1; i++) {
+                const p1 = new THREE.Vector3(...tubeNodes[i]);
+                const p2 = new THREE.Vector3(...tubeNodes[i+1]);
+                const len = p1.distanceTo(p2);
+                const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, len, 8), tubeMat);
+                tube.position.copy(p1).add(p2).multiplyScalar(0.5);
+                tube.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), p2.clone().sub(p1).normalize());
+                chassisGroup.add(tube);
+            }
+            carGroup.add(chassisGroup);
+
+            // B. Carbon Fiber Monocoque Bodywork
+            const bodyShape = new THREE.Shape();
+            bodyShape.moveTo(0, 0.15);
+            bodyShape.lineTo(0.18, 0.22);
+            bodyShape.lineTo(0.35, 0.35);
+            bodyShape.lineTo(0.75, 0.45);
+            bodyShape.lineTo(1.15, 0.65);
+            bodyShape.lineTo(1.85, 0.4);
+            bodyShape.lineTo(2.4, 0.24);
+            bodyShape.lineTo(2.4, 0.12);
+            bodyShape.lineTo(0, 0.12);
+
+            const extrudeSettings = { depth: 0.66, bevelEnabled: true, bevelSegments: 3, steps: 2, bevelSize: 0.03, bevelThickness: 0.03 };
+            const bodyGeo = new THREE.ExtrudeGeometry(bodyShape, extrudeSettings);
+            bodyGeo.center();
+
+            const bodyMat = new THREE.MeshPhysicalMaterial({
+                color: 0x0f172a,
+                roughness: 0.2,
+                metalness: 0.5,
+                transmission: 0.8,
+                opacity: 0.45,
+                transparent: true,
+                clearcoat: 1.0
+            });
+
+            bodyMesh = new THREE.Mesh(bodyGeo, bodyMat);
+            bodyMesh.rotation.y = Math.PI / 2;
+            bodyMesh.position.set(0, 0.35, 0.1);
+            bodyMesh.castShadow = true;
+            carGroup.add(bodyMesh);
+
+            // C. Front & Rear Aerodynamic Wings
+            const wingMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4, metalness: 0.5 });
+            
+            // Front Wing (+Z)
+            const frontWing = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.03, 0.3), wingMat);
+            frontWing.position.set(0, 0.12, 1.45);
+            frontWing.castShadow = true;
+            carGroup.add(frontWing);
+
+            const fEndL = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.2, 0.35), wingMat);
+            fEndL.position.set(0.65, 0.18, 1.45);
+            const fEndR = fEndL.clone();
+            fEndR.position.set(-0.65, 0.18, 1.45);
+            carGroup.add(fEndL, fEndR);
+
+            // Rear Wing (-Z)
+            const rearWing = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.04, 0.35), wingMat);
+            rearWing.position.set(0, 0.85, -1.25);
+            rearWing.castShadow = true;
+            carGroup.add(rearWing);
+
+            const rEndL = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.45, 0.45), wingMat);
+            rEndL.position.set(0.55, 0.85, -1.25);
+            const rEndR = rEndL.clone();
+            rEndR.position.set(-0.55, 0.85, -1.25);
+            carGroup.add(rEndL, rEndR);
+
+            // D. Wheels & Brake System
+            const wheelRadius = 0.25;
+            const wheelGeo = new THREE.CylinderGeometry(wheelRadius, wheelRadius, 0.2, 24);
+            wheelGeo.rotateZ(Math.PI / 2);
+
+            const tireMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.9 });
+            const rimMat = new THREE.MeshStandardMaterial({ color: 0xd1d5db, metalness: 0.9, roughness: 0.2 });
+            const discMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.9, roughness: 0.3 });
+            const caliperMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.3 });
+
+            const wheelPositions = [
+                { x: 0.66, y: wheelRadius, z: 1.0 },
+                { x: -0.66, y: wheelRadius, z: 1.0 },
+                { x: 0.66, y: wheelRadius, z: -0.9 },
+                { x: -0.66, y: wheelRadius, z: -0.9 }
+            ];
+
+            wheelPositions.forEach((pos) => {
+                const hub = new THREE.Group();
+                hub.position.set(pos.x, pos.y, pos.z);
+
+                const tire = new THREE.Mesh(wheelGeo, tireMat);
+                tire.castShadow = true;
+                hub.add(tire);
+
+                const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.21, 10).rotateZ(Math.PI / 2), rimMat);
+                hub.add(rim);
+
+                const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.02, 20).rotateZ(Math.PI / 2), discMat);
+                disc.position.x = pos.x > 0 ? -0.08 : 0.08;
+                hub.add(disc);
+                brakeDiscs.push(disc);
+
+                const caliper = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.1, 0.08), caliperMat);
+                caliper.position.set(pos.x > 0 ? -0.08 : 0.08, 0.1, 0);
+                hub.add(caliper);
+
+                carGroup.add(hub);
+                wheels.push(tire);
+            });
+
+            // E. EV High-Voltage Components
+            // 1. HV Battery Pack Container
+            batteryMesh = new THREE.Mesh(
+                new THREE.BoxGeometry(0.56, 0.38, 0.74),
+                new THREE.MeshPhysicalMaterial({
+                    color: 0x0284c7,
+                    metalness: 0.3,
+                    roughness: 0.2,
+                    transmission: 0.5,
+                    transparent: true,
+                    opacity: 0.85
+                })
+            );
+            batteryMesh.position.set(0, 0.3, 0.1);
+            carGroup.add(batteryMesh);
+
+            // Battery Cell Modules
+            const cellsGroup = new THREE.Group();
+            for(let cx = -0.18; cx <= 0.18; cx += 0.12) {
+                for(let cz = -0.25; cz <= 0.25; cz += 0.14) {
+                    const cell = new THREE.Mesh(
+                        new THREE.BoxGeometry(0.09, 0.28, 0.11),
+                        new THREE.MeshStandardMaterial({ color: 0xf59e0b, emissive: 0xd97706, emissiveIntensity: 0.4 })
+                    );
+                    cell.position.set(cx, 0, cz);
+                    cellsGroup.add(cell);
+                }
+            }
+            batteryMesh.add(cellsGroup);
+
+            // 2. Inverter
+            inverterMesh = new THREE.Mesh(
+                new THREE.BoxGeometry(0.36, 0.2, 0.3),
+                new THREE.MeshStandardMaterial({ color: 0x0284c7, metalness: 0.9, roughness: 0.2, emissive: 0x0369a1, emissiveIntensity: 0.3 })
+            );
+            inverterMesh.position.set(0, 0.42, -0.46);
+            carGroup.add(inverterMesh);
+
+            // 3. MGU Motor
+            motorMesh = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.17, 0.17, 0.38, 20).rotateZ(Math.PI / 2),
+                new THREE.MeshStandardMaterial({ color: 0x10b981, metalness: 0.8, roughness: 0.2, emissive: 0x047857, emissiveIntensity: 0.3 })
+            );
+            motorMesh.position.set(0, 0.24, -0.9);
+            carGroup.add(motorMesh);
+
+            // 4. HV Cables (Orange)
+            const hvMat = new THREE.MeshStandardMaterial({ color: 0xea580c, roughness: 0.3, emissive: 0xc2410c, emissiveIntensity: 0.4 });
+            const dcCurve = new THREE.CatmullRomCurve3([
+                new THREE.Vector3(0, 0.34, -0.2),
+                new THREE.Vector3(0, 0.42, -0.32),
+                new THREE.Vector3(0, 0.42, -0.42)
+            ]);
+            carGroup.add(new THREE.Mesh(new THREE.TubeGeometry(dcCurve, 16, 0.02, 8, false), hvMat));
+
+            const acCurve = new THREE.CatmullRomCurve3([
+                new THREE.Vector3(0, 0.4, -0.58),
+                new THREE.Vector3(0, 0.32, -0.72),
+                new THREE.Vector3(0, 0.24, -0.86)
+            ]);
+            carGroup.add(new THREE.Mesh(new THREE.TubeGeometry(acCurve, 16, 0.025, 8, false), hvMat));
+        }
+
+        // 4. Setup 3D Particle Smoke System
+        function setupSmokeParticles() {
+            const count = 100;
+            smokeGeo = new THREE.BufferGeometry();
+            const pos = new Float32Array(count * 3);
+            const vels = [];
+
+            for(let i = 0; i < count; i++) {
+                pos[i*3] = (Math.random() - 0.5) * 0.4;
+                pos[i*3+1] = 0.3 + Math.random() * 0.2;
+                pos[i*3+2] = 0.1 + (Math.random() - 0.5) * 0.5;
+                vels.push({
+                    x: (Math.random() - 0.5) * 0.02,
+                    y: 0.03 + Math.random() * 0.03,
+                    z: (Math.random() - 0.5) * 0.02
+                });
+            }
+
+            smokeGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+            smokeGeo.userData = { vels };
+
+            smokeMat = new THREE.PointsMaterial({
+                color: 0xef4444,
+                size: 0.12,
+                transparent: true,
+                opacity: 0.0,
+                blending: THREE.AdditiveBlending
+            });
+
+            smokeParticles = new THREE.Points(smokeGeo, smokeMat);
+            carGroup.add(smokeParticles);
+        }
+
+        function updateSmokeParticles(dt) {
+            if(!smokeParticles) return;
+
+            if(state.isFireDanger) {
+                smokeMat.opacity = Math.min(0.85, smokeMat.opacity + dt * 2.0);
+            } else {
+                smokeMat.opacity = Math.max(0.0, smokeMat.opacity - dt * 2.0);
+                if(smokeMat.opacity === 0) return;
+            }
+
+            const pos = smokeGeo.attributes.position.array;
+            const vels = smokeGeo.userData.vels;
+
+            for(let i = 0; i < vels.length; i++) {
+                pos[i*3] += vels[i].x;
+                pos[i*3+1] += vels[i].y;
+                pos[i*3+2] += vels[i].z;
+
+                if(pos[i*3+1] > 1.8) {
+                    pos[i*3] = (Math.random() - 0.5) * 0.3;
+                    pos[i*3+1] = 0.3;
+                    pos[i*3+2] = 0.1 + (Math.random() - 0.5) * 0.4;
+                }
+            }
+            smokeGeo.attributes.position.needsUpdate = true;
+        }
+
+        // 5. Setup Splines & 3D Flow Arrows System
+        function setupEnergyPaths() {
+            pathBattToInv = new THREE.CatmullRomCurve3([
+                new THREE.Vector3(0, 0.3, 0.1),
+                new THREE.Vector3(0, 0.38, -0.18),
+                new THREE.Vector3(0, 0.42, -0.46)
+            ]);
+
+            pathInvToMot = new THREE.CatmullRomCurve3([
+                new THREE.Vector3(0, 0.42, -0.46),
+                new THREE.Vector3(0, 0.32, -0.7),
+                new THREE.Vector3(0, 0.24, -0.9)
+            ]);
+
+            pathMotToWheelL = new THREE.CatmullRomCurve3([
+                new THREE.Vector3(0, 0.24, -0.9),
+                new THREE.Vector3(0.35, 0.24, -0.9),
+                new THREE.Vector3(0.66, 0.25, -0.9)
+            ]);
+
+            pathMotToWheelR = new THREE.CatmullRomCurve3([
+                new THREE.Vector3(0, 0.24, -0.9),
+                new THREE.Vector3(-0.35, 0.24, -0.9),
+                new THREE.Vector3(-0.66, 0.25, -0.9)
+            ]);
+        }
+
+        function createArrowMesh(colorHex) {
+            const group = new THREE.Group();
+            const mat = new THREE.MeshStandardMaterial({
+                color: colorHex,
+                emissive: colorHex,
+                emissiveIntensity: 1.2,
+                roughness: 0.1,
+                metalness: 0.8
+            });
+
+            const cone = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.1, 12).rotateX(Math.PI / 2), mat);
+            cone.position.z = 0.05;
+            group.add(cone);
+
+            const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.08, 10).rotateX(Math.PI / 2), mat);
+            shaft.position.z = -0.04;
+            group.add(shaft);
+
+            return group;
+        }
+
+        function build3DFlowArrows() {
+            arrowGroup = new THREE.Group();
+            carGroup.add(arrowGroup);
+
+            const count = 16;
+            for(let i = 0; i < count; i++) {
+                const arr = createArrowMesh(0xf97316);
+                arr.userData = { progress: i / count };
+                arrowGroup.add(arr);
+                driveArrows.push(arr);
+            }
+
+            for(let i = 0; i < count; i++) {
+                const arr = createArrowMesh(0x06b6d4);
+                arr.userData = { progress: i / count };
+                arrowGroup.add(arr);
+                regenArrows.push(arr);
+            }
+        }
+
+        function update3DFlowArrows(dt) {
+            if(!state.showArrows) {
+                arrowGroup.visible = false;
+                return;
+            }
+            arrowGroup.visible = true;
+
+            const isDrive = state.mode === 'drive' && state.speed > 0.5;
+            const isRegen = state.mode === 'regen' && state.speed > 0.5;
+            const speedFactor = (state.speed / 120) * 1.8 + 0.35;
+            const fwd = new THREE.Vector3(0, 0, 1);
+
+            driveArrows.forEach((arr, idx) => {
+                if (!isDrive) { arr.visible = false; return; }
+                arr.visible = true;
+                arr.userData.progress += dt * speedFactor * 0.7;
+                if (arr.userData.progress > 1) arr.userData.progress %= 1;
+
+                const p = arr.userData.progress;
+                let pos = new THREE.Vector3(), tan = new THREE.Vector3();
+
+                if (p < 0.4) {
+                    pos = pathBattToInv.getPoint(p / 0.4);
+                    tan = pathBattToInv.getTangent(p / 0.4);
+                } else if (p < 0.7) {
+                    pos = pathInvToMot.getPoint((p - 0.4) / 0.3);
+                    tan = pathInvToMot.getTangent((p - 0.4) / 0.3);
+                } else {
+                    const path = (idx % 2 === 0) ? pathMotToWheelL : pathMotToWheelR;
+                    pos = path.getPoint((p - 0.7) / 0.3);
+                    tan = path.getTangent((p - 0.7) / 0.3);
+                }
+
+                arr.position.copy(pos);
+                if (tan.lengthSq() > 0) arr.quaternion.setFromUnitVectors(fwd, tan.normalize());
+            });
+
+            regenArrows.forEach((arr, idx) => {
+                if (!isRegen) { arr.visible = false; return; }
+                arr.visible = true;
+                arr.userData.progress += dt * speedFactor * 0.7;
+                if (arr.userData.progress > 1) arr.userData.progress %= 1;
+
+                const p = arr.userData.progress;
+                let pos = new THREE.Vector3(), tan = new THREE.Vector3();
+
+                if (p < 0.3) {
+                    const path = (idx % 2 === 0) ? pathMotToWheelL : pathMotToWheelR;
+                    pos = path.getPoint(1 - (p / 0.3));
+                    tan = path.getTangent(1 - (p / 0.3)).negate();
+                } else if (p < 0.6) {
+                    pos = pathInvToMot.getPoint(1 - ((p - 0.3) / 0.3));
+                    tan = pathInvToMot.getTangent(1 - ((p - 0.3) / 0.3)).negate();
+                } else {
+                    pos = pathBattToInv.getPoint(1 - ((p - 0.6) / 0.4));
+                    tan = pathBattToInv.getTangent(1 - ((p - 0.6) / 0.4)).negate();
+                }
+
+                arr.position.copy(pos);
+                if (tan.lengthSq() > 0) arr.quaternion.setFromUnitVectors(fwd, tan.normalize());
+            });
+        }
+
+        // 6. Interactive 3D Component HUD Labels
+        function setupHUDLabels() {
+            hudLabels = [
+                { id: 'lbl-batt', text: 'HV BATTERY PACK (400V)', target: batteryMesh, color: 'amber' },
+                { id: 'lbl-inv', text: 'AC/DC INVERTER', target: inverterMesh, color: 'cyan' },
+                { id: 'lbl-mot', text: 'MGU AXIAL-FLUX MOTOR', target: motorMesh, color: 'emerald' },
+                { id: 'lbl-disc', text: 'REGEN BRAKING DISC', target: brakeDiscs[2], color: 'red' }
+            ];
+
+            const layer = document.getElementById('hud-labels-layer');
+            hudLabels.forEach((lbl) => {
+                const el = document.createElement('div');
+                el.className = `hud-label-3d px-2.5 py-1 rounded text-[11px] font-mono font-bold telemetry-panel text-${lbl.color}-400 border border-${lbl.color}-500/50 flex items-center gap-1.5 shadow-lg`;
+                el.innerHTML = `<span class="status-led led-${lbl.color}"></span> ${lbl.text}`;
+                layer.appendChild(el);
+                lbl.element = el;
+            });
+        }
+
+        function updateHUDLabels() {
+            if(!state.showLabels) {
+                hudLabels.forEach(l => l.element.style.opacity = '0');
+                return;
+            }
+
+            const pos = new THREE.Vector3();
+            hudLabels.forEach((lbl) => {
+                if(!lbl.target) return;
+                lbl.target.getWorldPosition(pos);
+                pos.y += 0.26;
+
+                pos.project(camera);
+                if (pos.z > 1) {
+                    lbl.element.style.opacity = '0';
+                    return;
+                }
+
+                const x = (pos.x * .5 + .5) * window.innerWidth;
+                const y = (pos.y * -.5 + .5) * window.innerHeight;
+
+                lbl.element.style.transform = `translate(-50%, -100%) translate(${x}px,${y}px)`;
+                lbl.element.style.opacity = '1';
+            });
+        }
+
+        // 7. Telemetry Line Chart Setup
+        function initTelemetryChart() {
+            chartCanvas = document.getElementById('chart-telemetry');
+            if(chartCanvas) chartCtx = chartCanvas.getContext('2d');
+        }
+
+        function renderTelemetryChart() {
+            if(!chartCtx) return;
+            const w = chartCanvas.width;
+            const h = chartCanvas.height;
+
+            chartData.power.push(state.power);
+            chartData.speed.push(state.speed);
+
+            if(chartData.power.length > 50) {
+                chartData.power.shift();
+                chartData.speed.shift();
+            }
+
+            chartCtx.clearRect(0, 0, w, h);
+
+            // Gridlines
+            chartCtx.strokeStyle = 'rgba(255,255,255,0.05)';
+            chartCtx.lineWidth = 1;
+            for(let y = 0; y < h; y += 20) {
+                chartCtx.beginPath();
+                chartCtx.moveTo(0, y);
+                chartCtx.lineTo(w, y);
+                chartCtx.stroke();
+            }
+
+            // Zero Axis Line
+            const zeroY = h / 2;
+            chartCtx.strokeStyle = 'rgba(255,255,255,0.2)';
+            chartCtx.beginPath();
+            chartCtx.moveTo(0, zeroY);
+            chartCtx.lineTo(w, zeroY);
+            chartCtx.stroke();
+
+            // Power Trace
+            chartCtx.strokeStyle = state.power < 0 ? '#06b6d4' : '#f97316';
+            chartCtx.lineWidth = 2;
+            chartCtx.beginPath();
+            for(let i = 0; i < chartData.power.length; i++) {
+                const x = (i / 50) * w;
+                const y = zeroY - (chartData.power[i] / 80) * (h / 2 - 5);
+                if(i === 0) chartCtx.moveTo(x, y);
+                else chartCtx.lineTo(x, y);
+            }
+            chartCtx.stroke();
+
+            // Speed Trace
+            chartCtx.strokeStyle = '#06b6d4';
+            chartCtx.lineWidth = 1.5;
+            chartCtx.beginPath();
+            for(let i = 0; i < chartData.speed.length; i++) {
+                const x = (i / 50) * w;
+                const y = h - (chartData.speed[i] / 140) * (h - 10);
+                if(i === 0) chartCtx.moveTo(x, y);
+                else chartCtx.lineTo(x, y);
+            }
+            chartCtx.stroke();
+        }
+
+        // 8. Vehicle Physics, Real-Time Range & Thermal Model
+        function updatePhysics(dt) {
+            // A. Powertrain & Driving Logic
+            if(state.mode === 'drive') {
+                const maxSpeed = (140 / 4.5) * state.gearRatio;
+                const targetPower = state.throttle * state.powerCap;
+                state.powerDrive += (targetPower - state.powerDrive) * dt * 3.5;
+                state.powerRegen = 0;
+
+                const accel = (state.powerDrive / (state.vehicleWeight * 0.05)) * dt * 15.0;
+                state.speed = Math.min(maxSpeed, state.speed + accel);
+                state.batterySOC = Math.max(0, state.batterySOC - (state.powerDrive * dt * 0.006));
+            } else if(state.mode === 'regen') {
+                const baseRegen = state.regenBrake > 0 ? state.regenBrake : 0.65;
+                const boostFactor = 1.0 + (state.brakeBlending / 100.0) * 0.35;
+                const targetRegenPower = (state.speed / 130) * (baseRegen * 42) * boostFactor;
+
+                state.powerRegen += (targetRegenPower - state.powerRegen) * dt * 3.5;
+                state.powerDrive = 0;
+
+                state.speed = Math.max(0, state.speed - (baseRegen * 42 * dt));
+
+                // Overcharge Check (>92% SOC)
+                if(state.batterySOC > 92.0 && baseRegen > 0.2) {
+                    triggerThermalHazard('Overcharge Risk: High Regen Current when SOC > 92% (Lithium Plating Danger)');
+                } else {
+                    state.batterySOC = Math.min(100, state.batterySOC + (state.powerRegen * dt * 0.005));
+                }
+            } else { // Idle / Coasting
+                state.speed = Math.max(0, state.speed - (8 * dt));
+                state.powerDrive = 0;
+                state.powerRegen = 0;
+            }
+
+            state.power = state.powerDrive - state.powerRegen + (state.speed > 0 ? state.powerAux : 0.0);
+            state.rpm = Math.round((state.speed / 130) * (state.gearRatio / 4.5) * 9600);
+
+            // B. Real-Time Range Math (EMA Filtered to Prevent Flickering)
+            const socMin = 5.0;
+            const usableSOC = Math.max(0.0, state.batterySOC - socMin);
+            state.usableEnergy = state.batteryCapacity * (usableSOC / 100.0) * state.soh;
+
+            const alpha = 0.04;
+            state.pNetAvg = (alpha * state.power) + ((1.0 - alpha) * state.pNetAvg);
+            const effPower = Math.max(0.1, state.pNetAvg);
+
+            state.timeToEmptyMins = (state.usableEnergy / effPower) * 60.0;
+            const effSpeed = state.speed > 2.0 ? state.speed : 60.0;
+            state.distToEmptyKm = effSpeed * (state.usableEnergy / effPower);
+
+            // C. Wheel Rotation & Ground Scroll
+            const rotSpeed = (state.speed / 3.6) / 0.25 * dt;
+            wheels.forEach(w => w.rotateX(rotSpeed));
+            if(roadGrid) roadGrid.position.z = (roadGrid.position.z - rotSpeed * 0.25) % 1;
+
+            // D. Thermal Accumulation Physics (P = I^2 * R)
+            state.currentAmp = Math.abs((state.powerDrive + state.powerRegen) * 1000 / 400);
+            const rInt = 0.045;
+            state.heatWatts = Math.pow(state.currentAmp, 1.85) * rInt * (1 - (state.coolingEff / 100) * 0.6);
+
+            const coolingPower = (state.batteryTemp - 28.0) * (state.coolingEff / 100) * 8.5;
+            const tempDelta = ((state.heatWatts * 0.08) - coolingPower) * dt * 0.05;
+            state.batteryTemp = Math.max(28.0, state.batteryTemp + tempDelta);
+
+            if(state.batteryTemp > 68.0 && !state.isFireDanger) {
+                triggerThermalHazard('Thermal Runaway: Battery Temperature exceeded 68°C safety threshold.');
+            }
+
+            // Flashing Red Effect on Battery Material when hazardous
+            if(batteryMesh) {
+                if(state.isFireDanger) {
+                    const flash = Math.sin(Date.now() * 0.01) * 0.5 + 0.5;
+                    batteryMesh.material.color.setHex(0xef4444);
+                    batteryMesh.material.emissive.setHex(0xd97706);
+                    batteryMesh.material.emissiveIntensity = flash * 1.5;
+                } else {
+                    batteryMesh.material.color.setHex(0x0284c7);
+                    batteryMesh.material.emissive.setHex(0x000000);
+                    batteryMesh.material.emissiveIntensity = 0;
+                }
+            }
+        }
+
+        function triggerThermalHazard(msg) {
+            state.isFireDanger = true;
+            document.getElementById('fire-banner').classList.remove('hidden');
+            document.getElementById('fire-banner-msg').innerText = msg;
+        }
+
+        function resetThermalHazard() {
+            state.isFireDanger = false;
+            state.batteryTemp = 35.0;
+            state.mode = 'idle';
+            state.throttle = 0;
+            state.regenBrake = 0;
+            document.getElementById('input-throttle').value = 0;
+            document.getElementById('input-brake').value = 0;
+            document.getElementById('lbl-throttle').innerText = '0%';
+            document.getElementById('lbl-brake').innerText = '0%';
+            document.getElementById('fire-banner').classList.add('hidden');
+        }
+
+        function onEngineeringParamsChange() {
+            state.brakeBlending = parseFloat(document.getElementById('input-blending').value);
+            state.gearRatio = parseFloat(document.getElementById('input-gear').value);
+            state.powerCap = parseFloat(document.getElementById('input-power-cap').value);
+            state.coolingEff = parseFloat(document.getElementById('input-cooling').value);
+
+            document.getElementById('lbl-blending').innerText = `${state.brakeBlending}%`;
+            document.getElementById('lbl-gear').innerText = `${state.gearRatio.toFixed(1)}:1`;
+            document.getElementById('lbl-power-cap').innerText = `${state.powerCap} kW`;
+            document.getElementById('lbl-cooling').innerText = `${state.coolingEff}%`;
+
+            const estTopSpeed = Math.round((135 / 4.5) * state.gearRatio);
+            const est75m = (Math.sqrt((2 * 75) / (state.powerCap * 45 / state.vehicleWeight))).toFixed(2);
+
+            document.getElementById('val-est-75m').innerText = `${est75m} s`;
+            document.getElementById('val-est-top').innerText = `${estTopSpeed} km/h`;
+            document.getElementById('val-regen-boost').innerText = `+${Math.round(state.brakeBlending * 0.35)}%`;
+        }
+
+        function updateUI() {
+            document.getElementById('val-speed').innerText = Math.round(state.speed);
+            
+            const pEl = document.getElementById('val-power');
+            pEl.innerText = (state.power >= 0 ? '+' : '') + state.power.toFixed(1);
+            pEl.className = `text-2xl font-black font-mono ${state.power < 0 ? 'text-cyan-400' : state.power > 0 ? 'text-orange-400' : 'text-slate-300'}`;
+
+            document.getElementById('val-rpm').innerText = state.rpm.toLocaleString();
+            document.getElementById('val-soc-text').innerText = state.batterySOC.toFixed(1) + '%';
+            document.getElementById('val-soc-bar').style.width = `${state.batterySOC}%`;
+
+            // Range Telemetry UI
+            document.getElementById('val-trem').innerText = state.timeToEmptyMins > 999 ? '> 999 mins' : `${Math.round(state.timeToEmptyMins)} mins`;
+            document.getElementById('val-drem').innerText = state.distToEmptyKm > 999 ? '> 999 km' : `${Math.round(state.distToEmptyKm)} km`;
+            document.getElementById('val-erem').innerText = `${state.usableEnergy.toFixed(2)} kWh`;
+            document.getElementById('val-pnet').innerText = `${(state.power >= 0 ? '+' : '')}${state.power.toFixed(1)} kW`;
+
+            // Thermal UI
+            const tEl = document.getElementById('val-temp');
+            tEl.innerText = `${state.batteryTemp.toFixed(1)} °C`;
+            document.getElementById('val-current').innerText = `${state.currentAmp.toFixed(1)} A`;
+            document.getElementById('val-heat').innerText = `${Math.round(state.heatWatts)} W`;
+
+            const heatPercent = Math.min(100, ((state.batteryTemp - 25) / 50) * 100);
+            document.getElementById('bar-heat').style.width = `${heatPercent}%`;
+
+            const bThermal = document.getElementById('badge-thermal');
+            const txtThermal = document.getElementById('txt-thermal-msg');
+
+            if(state.isFireDanger || state.batteryTemp > 68) {
+                bThermal.innerText = 'HAZARD: FIRE';
+                bThermal.className = 'text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-red-950 text-red-400 border border-red-500 animate-pulse';
+                tEl.className = 'text-lg font-extrabold text-red-500';
+                txtThermal.innerHTML = '<span class="text-red-400 font-bold">CRITICAL HAZARD:</span> Thermal runaway or overcharge during regen.';
+            } else if(state.batteryTemp > 55) {
+                bThermal.innerText = 'WARNING';
+                bThermal.className = 'text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-amber-950 text-amber-400 border border-amber-500';
+                tEl.className = 'text-lg font-extrabold text-amber-400';
+                txtThermal.innerHTML = '<span class="text-amber-400 font-semibold">WARNING:</span> Elevated temperature. Increase cooling flow.';
+            } else {
+                bThermal.innerText = 'NORMAL';
+                bThermal.className = 'text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800';
+                tEl.className = 'text-lg font-extrabold text-emerald-400';
+                txtThermal.innerHTML = 'Operating temperature within safe range (&lt; 55°C). Lithium degradation rate optimal.';
+            }
+
+            // Mode UI Status
+            const bFlow = document.getElementById('badge-flow-mode');
+            const btnDrive = document.getElementById('btn-drive');
+            const btnRegen = document.getElementById('btn-regen');
+            const btnIdle = document.getElementById('btn-idle');
+
+            btnDrive.className = "px-3 py-2 rounded bg-slate-900 border text-slate-200 transition text-center font-mono text-xs " + (state.mode === 'drive' ? "border-orange-500 bg-orange-950/40 text-orange-300" : "border-slate-700");
+            btnRegen.className = "px-3 py-2 rounded bg-slate-900 border text-slate-200 transition text-center font-mono text-xs " + (state.mode === 'regen' ? "border-cyan-500 bg-cyan-950/40 text-cyan-300" : "border-slate-700");
+            btnIdle.className = "px-3 py-2 rounded bg-slate-900 border text-slate-200 transition text-center font-mono text-xs " + (state.mode === 'idle' ? "border-emerald-500 bg-emerald-950/40 text-emerald-300" : "border-slate-700");
+
+            if(state.mode === 'drive') {
+                bFlow.innerText = 'BATTERY ➔ MOTOR';
+                bFlow.className = 'text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-orange-950 text-orange-400 border border-orange-700';
+            } else if(state.mode === 'regen') {
+                bFlow.innerText = 'MOTOR ➔ BATTERY';
+                bFlow.className = 'text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-700';
+            } else {
+                bFlow.innerText = 'STANDBY';
+                bFlow.className = 'text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-400';
+            }
+        }
+
+        // 9. Interactive Driving Control Handlers
+        function setSimMode(m) {
+            state.mode = m;
+            if(m === 'drive' && state.throttle === 0) {
+                state.throttle = 0.75;
+                document.getElementById('input-throttle').value = 75;
+                document.getElementById('lbl-throttle').innerText = '75%';
+            } else if(m === 'regen' && state.regenBrake === 0) {
+                state.regenBrake = 0.65;
+                document.getElementById('input-brake').value = 65;
+                document.getElementById('lbl-brake').innerText = '65%';
+            }
+        }
+
+        function onThrottleInput(v) {
+            state.throttle = v / 100;
+            document.getElementById('lbl-throttle').innerText = `${v}%`;
+            if(v > 0) {
+                state.mode = 'drive';
+                state.regenBrake = 0;
+                document.getElementById('input-brake').value = 0;
+                document.getElementById('lbl-brake').innerText = '0%';
+            }
+        }
+
+        function onBrakeInput(v) {
+            state.regenBrake = v / 100;
+            document.getElementById('lbl-brake').innerText = `${v}%`;
+            if(v > 0) {
+                state.mode = 'regen';
+                state.throttle = 0;
+                document.getElementById('input-throttle').value = 0;
+                document.getElementById('lbl-throttle').innerText = '0%';
+            }
+        }
+
+        function toggleLayer(layer, value) {
+            if(layer === 'xray') {
+                state.xray = value;
+                if(bodyMesh) {
+                    bodyMesh.material.transmission = value ? 0.8 : 0.0;
+                    bodyMesh.material.opacity = value ? 0.45 : 1.0;
+                    bodyMesh.material.needsUpdate = true;
+                }
+            } else if(layer === 'labels') {
+                state.showLabels = value;
+            } else if(layer === 'arrows') {
+                state.showArrows = value;
+            }
+        }
+
+        function setCameraView(preset) {
+            const s = camControl.spherical;
+            if(preset === 'side') {
+                s.radius = 5.0; s.phi = Math.PI / 2.2; s.theta = Math.PI / 2;
+            } else if(preset === 'powertrain') {
+                s.radius = 3.0; s.phi = Math.PI / 3.0; s.theta = Math.PI / 3;
+            } else if(preset === 'cockpit') {
+                s.radius = 1.8; s.phi = Math.PI / 2.8; s.theta = Math.PI / 1.1;
+            } else { // ISO
+                s.radius = 5.5; s.phi = Math.PI / 3.8; s.theta = Math.PI / 4;
+            }
+            updateCameraPosition();
+        }
+
+        // 10. Mouse & Drag Camera Controls
+        function setupControls() {
+            const container = document.getElementById('canvas-container');
+
+            container.addEventListener('mousedown', (e) => {
+                camControl.isDragging = true;
+                camControl.previousMousePosition = { x: e.clientX, y: e.clientY };
+            });
+
+            container.addEventListener('mousemove', (e) => {
+                if(!camControl.isDragging) return;
+                const deltaX = e.clientX - camControl.previousMousePosition.x;
+                const deltaY = e.clientY - camControl.previousMousePosition.y;
+
+                camControl.spherical.theta -= deltaX * 0.005;
+                camControl.spherical.phi = Math.max(0.1, Math.min(Math.PI / 2 - 0.01, camControl.spherical.phi - deltaY * 0.005));
+
+                updateCameraPosition();
+                camControl.previousMousePosition = { x: e.clientX, y: e.clientY };
+            });
+
+            window.addEventListener('mouseup', () => camControl.isDragging = false);
+
+            container.addEventListener('wheel', (e) => {
+                camControl.spherical.radius = Math.max(1.5, Math.min(12.0, camControl.spherical.radius + e.deltaY * 0.005));
+                updateCameraPosition();
+            }, { passive: true });
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+        }
+
+        // 11. Main Frame Loop
+        let lastTime = performance.now();
+
+        function animate(now) {
+            requestAnimationFrame(animate);
+
+            const dt = Math.min((now - lastTime) / 1000, 0.1);
+            lastTime = now;
+
+            updatePhysics(dt);
+            updateSmokeParticles(dt);
+            update3DFlowArrows(dt);
+            updateHUDLabels();
+            renderTelemetryChart();
+            updateUI();
+
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>
